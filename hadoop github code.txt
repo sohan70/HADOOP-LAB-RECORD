@@ -1,0 +1,86 @@
+#Copy files to read
+hadoop fs -copyFromLocal /home/cloudera/Desktop/emp.csv sohan/emp.csv 
+
+#Load Data
+A = load '/user/cloudera/sohan/emp.csv' using PigStorage(',') as (eid:int,ename:chararray,epos:chararray,esal:int,ecom:int,edpno:int);
+dump A;
+#show column names with data types
+describe A
+# Filtering and aggregation of data
+B = filter A by esal>=1500;
+B2 = filter A by edpno==20 and epos=='ANALYST';
+# shows Top n Rows
+C = limit B 3;
+# Orders the data by descending order depending on selected column name 
+# Default is ascending order
+D = order C by esal desc;
+#Store Data
+store D into '/sohan/pigout1’ using PigStorage(',’);
+#Selecting existing columns
+E = foreach A generate eid;
+
+# to Create new column
+F = foreach A generate *, ecom*2 as Bonus,esal*5 as Incentive;
+
+#Transform columns
+G = foreach A generate SUBSTRING(ename,0,4);
+#Generate columns from 0 to 1
+H = foreach A generate $0,$1;
+# grouping 
+I = group A by edpno;
+# frequency of your edpno or any var you define through Count($)
+J = foreach I generate group as edpno, COUNT($1) as count;
+# grouping A by two columns 
+L = group A by (edpno, epos);
+#This splits the data accordingly 
+SPLIT A into B if edpno==10, C if edpno==20, D if epos=='MANAGER';
+dump B
+dump C
+dump D
+# to join both the datas
+A = load '/emp.csv' using PigStorage(',') as (eid:int,ename:chararray,epos:chararray,esal:int,ecom:int,edpno:int);
+B = load '/dept.csv' using PigStorage(',') as (edpno:int,epos:chararray,ecity:chararray);
+#join both by edpno
+C = JOIN A by edpno,B by edpno;
+#join eid of A and pos of B
+D = foreach C generate A::eid,B::epos;
+#Right outer join for edpno for both data
+E = JOIN A by edpno RIGHT OUTER, B by edpno;
+
+#WORD COUNT
+#first we shall load the data
+lines = load '/plaintext.txt' as (line:chararray);
+#Now each word is split and made seperate
+token = foreach lines generate TOKENIZE(line);
+flats = foreach token generate FLATTEN($0);
+# grouping of the data
+group_words = group flats by $0;
+#count of the words, This gives the output in key value pairs
+count_word = foreach group_words generate group as word, COUNT($1) as word_occurence;
+
+#HIVE
+# First we check for any databases
+show databases
+# create database 
+create database if not exists newdb
+# to use newdb
+use newdb
+#creation of a new table
+create table if not exists emp(empno int, ename string,sal float,comm float,dpno int) row format delimited fields terminated by ',';
+#to know the contents of emp
+select *from emp;
+#creation of an external table
+create external table if not exists empext(eid int, ename string,epos string, esal int, ecomp int, edpno int) row format delimited fields terminated by ',' location '/user/cloudera/sohan/empext';
+#copies the data into the external table
+load data local inpath '/home/cloudera/Desktop/emp1.csv' into table empext;
+#PARTITIONING
+set hive.exec.dynamic.partition.mode;
+set hive.exec.dynamic.partition.mode=nonstrict;
+create external table emp_dept(empno int, ename string, sal float, comm float) partitioned by (dpno int) row format delimited fields terminated by ',';
+insert into table emp_dept partition(dpno) select*from emp;
+#checking 
+hadoop fs -ls /user/hive/warehouse/newdb.db
+
+# BUCKETING
+create table dept_buck( empno int, ename string, sal float, comm float, dpno int) clustered by (dpno) into 3 buckets row format delimited fields terminated by ',';
+set hive.enforce.bucketing = true;
